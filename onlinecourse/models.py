@@ -54,14 +54,18 @@ class Learner(models.Model):
 
 # Course model
 class Course(models.Model):
-    name = models.CharField(null=False, max_length=30, default='online course')
-    image = models.ImageField(upload_to='course_images/')
+    name = models.CharField(null=False, max_length=100, default='online course')
+    image = models.ImageField(upload_to='course_images/', null=True, blank=True)
     description = models.CharField(max_length=1000)
     pub_date = models.DateField(null=True)
     instructors = models.ManyToManyField(Instructor)
     users = models.ManyToManyField(settings.AUTH_USER_MODEL, through='Enrollment')
     total_enrollment = models.IntegerField(default=0)
     is_enrolled = False
+
+    @property
+    def question_set(self):
+        return self.questions
 
     def __str__(self):
         return "Name: " + self.name + "," + \
@@ -74,6 +78,13 @@ class Lesson(models.Model):
     order = models.IntegerField(default=0)
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     content = models.TextField()
+
+    @property
+    def question_set(self):
+        return self.questions
+
+    def __str__(self):
+        return self.title
 
 
 # Enrollment model
@@ -95,9 +106,56 @@ class Enrollment(models.Model):
     rating = models.FloatField(default=5.0)
 
 
-# One enrollment could have multiple submission
+# Question model
+class Question(models.Model):
+    lesson = models.ForeignKey(Lesson, on_delete=models.CASCADE, null=True, blank=True, related_name='questions')
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, null=True, blank=True, related_name='questions')
+    question_text = models.CharField(max_length=500)
+    grade = models.IntegerField(default=1)
+
+    def save(self, *args, **kwargs):
+        if self.lesson and not self.course:
+            self.course = self.lesson.course
+        super().save(*args, **kwargs)
+
+    def is_get_score(self, selected_ids):
+        all_answers = self.choices.filter(is_correct=True).count()
+        selected_correct = self.choices.filter(is_correct=True, id__in=selected_ids).count()
+        selected_incorrect = self.choices.filter(is_correct=False, id__in=selected_ids).count()
+        if all_answers > 0 and all_answers == selected_correct and selected_incorrect == 0:
+            return True
+        return False
+
+    @property
+    def choice_set(self):
+        return self.choices
+
+    def __str__(self):
+        return f"Question: {self.question_text}"
+
+
+# Choice model
+class Choice(models.Model):
+    question = models.ForeignKey(Question, on_delete=models.CASCADE, related_name='choices')
+    choice_text = models.CharField(max_length=250)
+    is_correct = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"{self.choice_text} ({'Correct' if self.is_correct else 'Incorrect'})"
+
+
+# Submission model
+# One enrollment could have multiple submissions
 # One submission could have multiple choices
 # One choice could belong to multiple submissions
-#class Submission(models.Model):
-#    enrollment = models.ForeignKey(Enrollment, on_delete=models.CASCADE)
-#    choices = models.ManyToManyField(Choice)
+class Submission(models.Model):
+    enrollment = models.ForeignKey(Enrollment, on_delete=models.CASCADE, related_name='submissions')
+    choices = models.ManyToManyField(Choice, related_name='submissions')
+    date_submitted = models.DateTimeField(default=now)
+
+    @property
+    def choice_set(self):
+        return self.choices
+
+    def __str__(self):
+        return f"Submission {self.id} for {self.enrollment.user.username}"

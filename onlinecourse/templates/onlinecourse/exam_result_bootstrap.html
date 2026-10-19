@@ -2,53 +2,145 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exam Results - {{ course.name }}</title>
     {% load static %}
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.16.0/umd/popper.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <style>
+        .result-banner {
+            border-radius: 8px;
+            padding: 25px;
+            margin-bottom: 25px;
+        }
+        .choice-item {
+            padding: 10px 15px;
+            margin-bottom: 8px;
+            border-radius: 5px;
+            border: 1px solid #e2e8f0;
+        }
+        .choice-correct-selected {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        .choice-incorrect-selected {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        .choice-correct-unselected {
+            background-color: #e8f4fd;
+            border-color: #bee5eb;
+        }
+    </style>
 </head>
-<body>
-
- <nav class="navbar navbar-light bg-light">
-    <div class="container-fluid">
-        <div class="navbar-header">
-              <a class="navbar-brand" href="{% url 'onlinecourse:index' %}">Home</a>
+<body class="bg-light">
+    <!-- Navigation bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand font-weight-bold" href="{% url 'onlinecourse:index' %}">OnlineCourse LMS</a>
+            <div class="navbar-nav ml-auto align-items-center">
+                {% if user.is_authenticated %}
+                <span class="navbar-text mr-3 text-white font-weight-bold">
+                    Hello, {{ user.first_name|default:user.username }} ({{ user.username }})
+                </span>
+                <a class="btn btn-outline-light btn-sm" href="{% url 'onlinecourse:logout' %}">Logout</a>
+                {% endif %}
+            </div>
         </div>
-        <ul class="nav navbar-nav navbar-right">
-            {% if user.is_authenticated %}
-            <li>
-                <a class="btn btn-link" href="#">{{ user.first_name }}({{ user.username }})</a>
-                <a class="btn btn-link" href="{% url 'onlinecourse:logout' %}">Logout</a>
-            </li>
-            {% else %}
-            <li>
-                <form class="form-inline" action="{% url 'onlinecourse:login' %}" method="post">
-                    {% csrf_token %}
-                    <div class="input-group">
-                        <input type="text" class="form-control" placeholder="Username" name="username" >
-                        <input type="password" class="form-control" placeholder="Username" name="psw" >
-                        <button class="btn btn-primary" type="submit">Login</button>
-                        <a class="btn btn-link" href="{% url 'onlinecourse:registration' %}">Sign Up</a>
-                    </div>
-                </form>
-            </li>
-            {% endif %}
-        </ul>
-    </div>
-</nav>
+    </nav>
 
-<div class="container-fluid">
-    {% if grade > 80 %}
-    <div class="alert alert-success">
-       <!--HINT Display passed info -->
-    </div>
+    <!-- Main Container -->
+    <div class="container my-4">
+        <!-- Result Banner -->
+        {% if grade >= 80 %}
+        <div class="alert alert-success result-banner shadow" id="result-status-card">
+            <h1 class="display-5 font-weight-bold text-success">
+                Congratulations!
+            </h1>
+            <p class="lead font-weight-bold mb-2">
+                You passed the exam with a score of {{ score }}/{{ total_questions }} ({{ grade }}%)!
+            </p>
+            <p class="mb-0 text-muted">
+                Submitted on {{ submission.date_submitted|date:"F j, Y, g:i a" }} by {{ submission.enrollment.user.username }}.
+            </p>
+        </div>
         {% else %}
-        <div class="alert alert-danger">
-            <!--HINT Display failed info -->
+        <div class="alert alert-danger result-banner shadow" id="result-status-card">
+            <h1 class="display-5 font-weight-bold text-danger">
+                Exam Not Passed
+            </h1>
+            <p class="lead font-weight-bold mb-2">
+                You scored {{ score }}/{{ total_questions }} ({{ grade }}%). An 80% or higher is required to pass.
+            </p>
+            <a class="btn btn-warning font-weight-bold mt-2" href="{% url 'onlinecourse:course_details' course.id %}">
+                Re-test Exam
+            </a>
         </div>
-        <a class="btn btn-link text-danger" href="{% url 'onlinecourse:course_details' course.id %}">Re-test</a>
         {% endif %}
-        <div class="card-columns-vertical mt-1">
-        <h5 class="">Exam results</h5>
-            <!--HINT Display exam results-->
+
+        <!-- Exam Results Details Section -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">Detailed Exam Review: {{ course.name }}</h4>
+                <span class="badge badge-light font-weight-bold p-2">Total Score: {{ score }}/{{ max_score }}</span>
+            </div>
+            <div class="card-body">
+                <h5 class="text-secondary mb-4">Review your selected answers below:</h5>
+
+                {% for result in question_results %}
+                <div class="card mb-4 border {% if result.is_correct %}border-success{% else %}border-danger{% endif %} shadow-sm">
+                    <div class="card-header d-flex justify-content-between align-items-center {% if result.is_correct %}bg-light text-success{% else %}bg-light text-danger{% endif %}">
+                        <h5 class="mb-0 font-weight-bold">
+                            Question {{ forloop.counter }}: {{ result.question.question_text }}
+                        </h5>
+                        <div>
+                            {% if result.is_correct %}
+                            <span class="badge badge-success p-2 font-weight-bold">Correct (+{{ result.grade }} pt)</span>
+                            {% else %}
+                            <span class="badge badge-danger p-2 font-weight-bold">Incorrect (0/{{ result.max_grade }} pt)</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        {% for item in result.choices_detail %}
+                        <div class="choice-item {% if item.is_selected and item.is_correct %}choice-correct-selected{% elif item.is_selected and not item.is_correct %}choice-incorrect-selected{% elif not item.is_selected and item.is_correct %}choice-correct-unselected{% endif %}">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div>
+                                    {% if item.is_selected %}
+                                    <span class="badge badge-primary mr-2">Your Choice</span>
+                                    {% endif %}
+                                    {% if item.is_correct %}
+                                    <span class="badge badge-success mr-2">Correct Answer</span>
+                                    {% elif item.is_selected and not item.is_correct %}
+                                    <span class="badge badge-danger mr-2">Wrong Answer</span>
+                                    {% endif %}
+                                    <span class="font-weight-medium">{{ item.choice.choice_text }}</span>
+                                </div>
+                                <div>
+                                    {% if item.is_selected and item.is_correct %}
+                                    <span class="text-success font-weight-bold">&#10004; Correct</span>
+                                    {% elif item.is_selected and not item.is_correct %}
+                                    <span class="text-danger font-weight-bold">&#10008; Incorrect</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+
+                <div class="text-center mt-4">
+                    <a href="{% url 'onlinecourse:course_details' course.id %}" class="btn btn-outline-primary btn-lg mr-2 font-weight-bold">
+                        Back to Course Details
+                    </a>
+                    <a href="{% url 'onlinecourse:index' %}" class="btn btn-primary btn-lg font-weight-bold">
+                        Course Catalog
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
 </body>
